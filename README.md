@@ -3,16 +3,16 @@
 这是一个基于 Node.js 的反向代理服务器，可部署在 Vercel 平台上，有两个主要用途：
 
 1. **反代 WordPress 等网站**：可以反代您的 WordPress 博客或其他网站，白嫖 Vercel 的全球 CDN，提升访问速度。
-2. **反代各种大模型 API**：对于国内用户，可以通过此服务访问被封锁的大模型 API，包括 Grok、OpenAI、Claude 等，支持流式输出，完美适配 OpenWebUI 等开源客户端。
+2. **反代 Grok API**：对于国内用户，可以通过此服务访问被封锁的 Grok API，支持流式输出，完美适配 OpenWebUI 等开源客户端。（也支持其他API如OpenAI、Claude等）
 
 ## 特点
 
 - 自动替换所有返回内容中的网址，确保链接正常工作
 - 支持各种压缩格式 (gzip, deflate, br)
-- 针对大模型 API 优化，支持流式响应，解决超时问题
+- 针对 Grok API 优化，支持流式响应，解决超时问题
 - 完全免费，利用 Vercel 的服务器和 CDN 资源
 - 简单易用，无需编程知识，只需几步设置
-- **通用性强**：无需修改代码即可反代各种大模型 API
+- **通用性强**：无需修改代码即可反代 Grok API 及其他类似 API
 
 ## 使用方法（小白友好）
 
@@ -47,11 +47,10 @@
    - **名称**：`TARGET_URL`
    - **值**：填入您要反代的目标网址
      - 反代 WordPress：例如 `https://您的博客地址.com`
-     - 反代大模型 API：
-       - Grok API：`https://api.x.ai`（X公司的Grok API）
+     - 反代 Grok API：`https://api.x.ai`（X公司的Grok API）
+     - 其他API（如需要）：
        - OpenAI API：`https://api.openai.com`
        - Claude API：`https://api.anthropic.com`
-       - 其他大模型 API：对应的 API 基础地址
 4. 点击 "Save" 保存
 5. 回到 "Deployments" 标签，找到最新部署，点击右边的 "..." 按钮，选择 "Redeploy"
 6. 等待重新部署完成
@@ -275,36 +274,32 @@
 ### 第四步：使用您的代理服务
 
 部署完成后：
-- **Vercel 部署**：可使用 Vercel 提供的域名，格式为：`https://您的项目名-用户名.vercel.app`
-- **VPS 部署**：可使用您自己的域名，例如：`https://your-domain.com`
+- **Vercel 部署**：
+  - Vercel提供的默认域名（格式为`https://您的项目名-用户名.vercel.app`）**在国内已被屏蔽**
+  - **必须绑定自己的域名**：在Vercel控制台 → 项目设置 → Domains中添加您自己的域名
+
+- **VPS 部署**：使用您自己的域名，例如：`https://your-domain.com`
 
 使用方法：
 - **反代网站**：直接访问您的域名即可访问被代理的源站内容
-- **反代大模型 API**：在您的客户端中，将 API 地址设置为：
-  - OpenAI：`https://您的域名/v1/chat/completions`
-  - Claude：`https://您的域名/v1/messages`
-  - Grok API（与OpenAI兼容）：
-    - 聊天接口：`https://您的域名/v1/chat/completions`
-    - 文本补全：`https://您的域名/v1/completions`
-    - 嵌入向量：`https://您的域名/v1/embeddings`
-    - 模型列表：`https://您的域名/v1/models`
-  
-  在接入OpenWebUI等开源客户端时，可以选择"OpenAI"类型，并将API基础URL设置为`https://您的域名`
+- **反代 Grok API**：在客户端中，将API基础URL设置为您的域名+"/v1"
+  - 例如：`https://您的域名/v1`
+  - 在OpenWebUI等开源客户端中，选择"OpenAI"类型，并正确设置为`https://您的域名/v1`
 
 ## 注意事项
 
-- Vercel 免费计划有一定的带宽和函数执行时间限制
+- Vercel 免费计划有一定的带宽和函数执行时间限制（例如超时时间10秒）
 - 不要将此服务用于违法用途
-- 如代理 Grok API，请确保您拥有合法的 API 使用权
+- 使用 Grok API 时，请确保您拥有合法的 API 使用权
 - 部分网站可能有反代理机制，效果可能不理想
-- **使用Grok API需注意**：Grok API与OpenAI API兼容，但有自己的模型名称和特点，使用时请参考[Grok官方API文档](https://docs.x.ai/)设置正确的模型名称（如`grok-2`）
+- **使用Grok API需注意**：使用时需要正确填写模型名称（如`grok-2`），建议参考[官方文档](https://docs.x.ai/)了解最新模型信息
 
 ## 常见问题
 
 **Q: 部署后访问显示错误或白屏？**  
 A: 检查环境变量是否设置正确，确保 TARGET_URL 没有多余的空格和斜杠。
 
-**Q: 大模型 API 响应很慢或超时？**  
+**Q: Grok API 响应很慢或超时？**  
 A: 这可能是网络问题或 Vercel 节点限制，可尝试不同时间重试或使用VPS部署。
 
 **Q: 可以同时反代多个不同的 API 吗？**  
@@ -315,3 +310,6 @@ A: 本项目已优化常见的 WordPress 登录问题，如仍有异常，可尝
 
 **Q: VPS 部署后无法通过域名访问？**  
 A: 请检查域名DNS是否正确指向您的VPS IP，以及Nginx配置和防火墙设置是否正确。
+
+**Q: 如何在Vercel上绑定自己的域名？**  
+A: 在Vercel控制台进入您的项目 → 点击"Settings" → 左侧选择"Domains" → 输入您的域名并点击"Add"。然后根据Vercel提供的指引，到您的域名注册商那里添加相应的DNS记录。验证成功后，您的域名就可以正常访问了。
