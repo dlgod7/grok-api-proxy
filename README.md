@@ -122,11 +122,21 @@ Vercel提供的默认域名（格式为`https://您的项目名-用户名.vercel
 
 3. **配置目标网址**
    ```bash
-   # 创建环境变量文件
-   cat > .env << EOL
-   TARGET_URL=https://您要反代的地址.com
-   EOL
+   # 编辑server.js文件
+   nano server.js
    ```
+   
+   找到第6行左右的这一行代码：
+   ```javascript
+   const targetUrl = process.env.TARGET_URL || 'https://targetUrl.com';
+   ```
+   
+   将`'https://targetUrl.com'`替换为您要反代的目标网址，例如：
+   ```javascript
+   const targetUrl = process.env.TARGET_URL || 'https://api.x.ai';
+   ```
+   
+   保存并退出（在nano编辑器中按Ctrl+X，然后按Y确认保存，最后按Enter）
 
 4. **启动服务**
    ```bash
@@ -185,6 +195,8 @@ Vercel提供的默认域名（格式为`https://您的项目名-用户名.vercel
    # 证书会自动续期
    ```
 
+完成VPS部署后，您可以通过您的域名访问服务，使用方式与Vercel部署相同。
+
 #### CentOS/RHEL 系统部署步骤
 
 1. **准备工作：更新系统并安装基础软件**
@@ -216,11 +228,21 @@ Vercel提供的默认域名（格式为`https://您的项目名-用户名.vercel
 
 3. **配置目标网址**
    ```bash
-   # 创建环境变量文件
-   cat > .env << EOL
-   TARGET_URL=https://您要反代的地址.com
-   EOL
+   # 编辑server.js文件
+   nano server.js
    ```
+   
+   找到第6行左右的这一行代码：
+   ```javascript
+   const targetUrl = process.env.TARGET_URL || 'https://targetUrl.com';
+   ```
+   
+   将`'https://targetUrl.com'`替换为您要反代的目标网址，例如：
+   ```javascript
+   const targetUrl = process.env.TARGET_URL || 'https://api.x.ai';
+   ```
+   
+   保存并退出（在nano编辑器中按Ctrl+X，然后按Y确认保存，最后按Enter）
 
 4. **启动服务**
    ```bash
