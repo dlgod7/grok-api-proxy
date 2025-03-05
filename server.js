@@ -22,81 +22,56 @@ app.use((req, res, next) => {
   next();
 });
 
-// 所有请求都转发到Grok API，无需前缀过滤
-app.use('/', createProxyMiddleware({
+// 创建Grok API代理
+const grokProxy = createProxyMiddleware({
   target: grokTargetUrl,
   changeOrigin: true,
-  selfHandleResponse: false, // 不缓冲响应，允许流式传输
-  pathRewrite: (path, req) => {
-    // 如果目标URL不包含/v1，则添加
-    if (!grokTargetUrl.endsWith('/v1') && !path.startsWith('/v1')) {
-      return '/v1' + path;
-    }
-    return path;
+  pathRewrite: (pathReq, req) => {
+    // 确保路径以/v1开头
+    return pathReq.startsWith('/v1') ? pathReq : `/v1${pathReq}`;
   },
-  onProxyReq: (proxyReq, req, res) => {
-    // 确保请求体具有stream=true参数
-    if (req.body) {
-      const modifiedBody = { ...req.body };
-      
-      // 强制启用流式传输
-      if (path.includes('/chat/completions')) {
-        modifiedBody.stream = true;
+  onProxyReq: (proxyReq, req) => {
+    // 确保请求体中包含stream=true
+    if (req.body && req.method === 'POST') {
+      if (req.body.stream === undefined) {
+        req.body.stream = true;
+        
+        // 如果请求体已被解析，需要重新写入
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
       }
-      
-      const bodyData = JSON.stringify(modifiedBody);
-      
-      // 更新内容长度
-      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-      
-      // 写入修改后的请求体
-      proxyReq.write(bodyData);
-      proxyReq.end();
     }
   },
   onProxyRes: (proxyRes, req, res) => {
-    // 设置正确的响应头以支持流式传输
-    const contentType = proxyRes.headers['content-type'] || '';
-    
-    // 对于SSE流式响应，确保设置正确的头信息
-    if (contentType.includes('text/event-stream')) {
+    // 处理流式响应，设置适当的头部
+    if (req.body && req.body.stream === true) {
       proxyRes.headers['Cache-Control'] = 'no-cache';
       proxyRes.headers['Connection'] = 'keep-alive';
-      
-      // 确保使用chunked传输编码
-      if (!proxyRes.headers['transfer-encoding']) {
-        proxyRes.headers['transfer-encoding'] = 'chunked';
-      }
+      proxyRes.headers['Content-Type'] = 'text/event-stream';
     }
   },
   onError: (err, req, res) => {
-    console.error('Grok API代理错误:', err);
-    
-    // 检查是否是流式请求
-    const isEventStream = req.headers.accept && req.headers.accept.includes('text/event-stream');
-    
-    if (isEventStream && !res.headersSent) {
-      // 对于流式请求，以SSE格式返回错误
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.write(`data: ${JSON.stringify({ error: '代理服务器错误', message: err.message })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } else if (!res.headersSent) {
-      // 对于非流式请求，以JSON格式返回错误
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: '代理服务器错误', message: err.message }));
+    console.error('代理错误:', err);
+    if (!res.headersSent) {
+      res.status(500).send({
+        error: {
+          message: `代理请求失败: ${err.message}`,
+          type: 'proxy_error'
+        }
+      });
     }
-  }
-}));
+  },
+  selfHandleResponse: false // 让响应直接流式传输
+});
 
-// 在开发环境中启动服务器
-if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Grok API代理服务运行在 http://localhost:${PORT}`);
-  });
-}
+// 将所有请求代理到Grok API
+app.use('/', grokProxy);
+
+// 启动服务器
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`服务器运行在端口 ${port}`);
+});
 
 module.exports = app;
