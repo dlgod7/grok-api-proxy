@@ -1,18 +1,300 @@
-# WP-JSProxy
+# 多功能反向代理服务器
 
-该项目实现了一个基于 Node.js 的反向代理服务器，用于反代指定的目标 WordPress 网站（理论上对单域名网站都有效），并自动将页面中所有返回的目标网址替换为当前访问的域名。适合部署到 Vercel 之类的站点托管平台，白嫖 CDN 流量，给网站加速。
+这是一个基于 Node.js 的反向代理服务器，可部署在 Vercel 平台上，有两个主要用途：
 
-## 安装与运行
+1. **反代 WordPress 等网站**：可以反代您的 WordPress 博客或其他网站，白嫖 Vercel 的全球 CDN，提升访问速度。
+2. **反代各种大模型 API**：对于国内用户，可以通过此服务访问被封锁的大模型 API，包括 Grok、OpenAI、Claude 等，支持流式输出，完美适配 OpenWebUI 等开源客户端。
 
-在本地使用 Vercel CLI 部署到 Vercel 。
-或者，Fork 本项目到你自己的 Github ，再到 Vercel 控制台部署。
-具体步骤可询问 ChatGPT 。
-  
-## 配置说明
-  
-  在 `server.js` 中定义目标网站地址，例如：
-  ```js
-  const targetUrl = process.env.TARGET_URL || 'https://targetUrl.com';
-  ```
-  表示所有反代请求均发往该地址。
-  也可以到 Vercel 控制台添加环境变量 `TARGET_URL = https://newTargetUrl.com`
+## 特点
+
+- 自动替换所有返回内容中的网址，确保链接正常工作
+- 支持各种压缩格式 (gzip, deflate, br)
+- 针对大模型 API 优化，支持流式响应，解决超时问题
+- 完全免费，利用 Vercel 的服务器和 CDN 资源
+- 简单易用，无需编程知识，只需几步设置
+- **通用性强**：无需修改代码即可反代各种大模型 API
+
+## 使用方法（小白友好）
+
+有两种方式部署本项目：
+1. 在 Vercel 上部署（推荐，完全免费）
+2. 在自己的 VPS（云主机）上部署
+
+### 方法一：在 Vercel 上部署（推荐）
+
+#### 第一步：Fork 本项目
+
+1. 在本页面顶部，点击 "Fork" 按钮
+2. 选择 "Create a new fork"
+3. 保持默认设置，点击 "Create fork"
+4. 等待几秒钟，项目就会被复制到您的 GitHub 账号下
+
+#### 第二步：在 Vercel 上部署
+
+1. 注册/登录 [Vercel](https://vercel.com)（可直接用 GitHub 账号登录）
+2. 点击 "Add New..." -> "Project"
+3. 在项目列表中找到您刚才 Fork 的项目，点击 "Import"
+4. 保持默认设置，点击 "Deploy"
+5. 等待部署完成
+
+#### 第三步：设置环境变量（重要！）
+
+部署后还需要设置目标网址，否则代理无法正常工作：
+
+1. 在 Vercel 项目页面，点击顶部的 "Settings" 标签
+2. 在左侧菜单找到 "Environment Variables"
+3. 添加新的环境变量：
+   - **名称**：`TARGET_URL`
+   - **值**：填入您要反代的目标网址
+     - 反代 WordPress：例如 `https://您的博客地址.com`
+     - 反代大模型 API：
+       - Grok API：`https://api.x.ai`（X公司的Grok API）
+       - OpenAI API：`https://api.openai.com`
+       - Claude API：`https://api.anthropic.com`
+       - 其他大模型 API：对应的 API 基础地址
+4. 点击 "Save" 保存
+5. 回到 "Deployments" 标签，找到最新部署，点击右边的 "..." 按钮，选择 "Redeploy"
+6. 等待重新部署完成
+
+### 方法二：在 VPS（云主机）上部署
+
+如果您有自己的VPS或云主机，也可以在上面部署本项目，这样可以拥有更大的控制权和稳定性。下面提供两种常见Linux系统的详细部署步骤。
+
+#### Ubuntu/Debian 系统部署步骤
+
+1. **准备工作：更新系统并安装基础软件**
+   ```bash
+   # 更新系统包
+   sudo apt update
+   sudo apt upgrade -y
+   
+   # 安装 Node.js 和 npm
+   sudo apt install -y nodejs npm git
+   
+   # 检查安装的版本
+   node -v  # 应该显示 v10.x 或更高版本
+   npm -v   # 应该显示 v6.x 或更高版本
+   ```
+
+2. **克隆项目代码**
+   ```bash
+   # 创建一个文件夹用于存放项目
+   mkdir -p ~/proxy-server
+   cd ~/proxy-server
+   
+   # 克隆项目代码
+   git clone https://github.com/您的用户名/您fork的项目名.git .
+   # 如果您没有fork，可以直接克隆原始项目
+   # git clone https://github.com/原作者/原项目名.git .
+   
+   # 安装依赖
+   npm install
+   ```
+
+3. **配置目标网址**
+   ```bash
+   # 创建环境变量文件
+   cat > .env << EOL
+   TARGET_URL=https://您要反代的地址.com
+   EOL
+   ```
+
+4. **启动服务**
+   ```bash
+   # 安装 PM2 用于进程管理
+   sudo npm install -g pm2
+   
+   # 启动服务
+   pm2 start server.js --name "proxy-server"
+   
+   # 设置开机自启
+   pm2 startup
+   pm2 save
+   ```
+
+5. **配置 Nginx 反向代理（可选，但推荐）**
+   ```bash
+   # 安装 Nginx
+   sudo apt install -y nginx
+   
+   # 创建 Nginx 配置文件
+   sudo nano /etc/nginx/sites-available/proxy-server
+   ```
+   
+   在编辑器中粘贴以下内容（替换域名为您自己的）：
+   ```
+   server {
+       listen 80;
+       server_name your-domain.com;  # 替换成您的域名
+       
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+       }
+   }
+   ```
+   
+   保存并启用站点：
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/proxy-server /etc/nginx/sites-enabled/
+   sudo nginx -t  # 测试配置是否有错
+   sudo systemctl restart nginx
+   ```
+
+6. **配置 SSL（可选，但强烈推荐）**
+   ```bash
+   # 安装 Certbot
+   sudo apt install -y certbot python3-certbot-nginx
+   
+   # 获取并安装证书
+   sudo certbot --nginx -d your-domain.com
+   
+   # 证书会自动续期
+   ```
+
+#### CentOS/RHEL 系统部署步骤
+
+1. **准备工作：更新系统并安装基础软件**
+   ```bash
+   # 更新系统包
+   sudo yum update -y
+   
+   # 安装 Node.js 和 npm
+   sudo yum install -y epel-release
+   sudo yum install -y nodejs npm git
+   
+   # 检查安装的版本
+   node -v  # 确保版本在 v10 以上
+   npm -v   # 确保版本在 v6 以上
+   ```
+
+2. **克隆项目代码**
+   ```bash
+   # 创建一个文件夹用于存放项目
+   mkdir -p ~/proxy-server
+   cd ~/proxy-server
+   
+   # 克隆项目代码
+   git clone https://github.com/您的用户名/您fork的项目名.git .
+   
+   # 安装依赖
+   npm install
+   ```
+
+3. **配置目标网址**
+   ```bash
+   # 创建环境变量文件
+   cat > .env << EOL
+   TARGET_URL=https://您要反代的地址.com
+   EOL
+   ```
+
+4. **启动服务**
+   ```bash
+   # 安装 PM2 用于进程管理
+   sudo npm install -g pm2
+   
+   # 启动服务
+   pm2 start server.js --name "proxy-server"
+   
+   # 设置开机自启
+   pm2 startup
+   sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $(whoami) --hp $(echo $HOME)
+   pm2 save
+   ```
+
+5. **配置防火墙**
+   ```bash
+   # 开放 80 和 443 端口
+   sudo firewall-cmd --permanent --add-service=http
+   sudo firewall-cmd --permanent --add-service=https
+   sudo firewall-cmd --reload
+   ```
+
+6. **配置 Nginx 反向代理（可选，但推荐）**
+   ```bash
+   # 安装 Nginx
+   sudo yum install -y nginx
+   
+   # 启动 Nginx 并设置开机自启
+   sudo systemctl start nginx
+   sudo systemctl enable nginx
+   
+   # 创建 Nginx 配置文件
+   sudo nano /etc/nginx/conf.d/proxy-server.conf
+   ```
+   
+   在编辑器中粘贴以下内容（替换域名为您自己的）：
+   ```
+   server {
+       listen 80;
+       server_name your-domain.com;  # 替换成您的域名
+       
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+       }
+   }
+   ```
+   
+   保存并重启 Nginx：
+   ```bash
+   sudo nginx -t  # 测试配置是否有错
+   sudo systemctl restart nginx
+   ```
+
+7. **配置 SSL（可选，但强烈推荐）**
+   ```bash
+   # 安装 Certbot
+   sudo yum install -y certbot python3-certbot-nginx
+   
+   # 获取并安装证书
+   sudo certbot --nginx -d your-domain.com
+   
+   # 证书会自动续期
+   ```
+
+### 第四步：使用您的代理服务
+
+部署完成后：
+- **Vercel 部署**：可使用 Vercel 提供的域名，格式为：`https://您的项目名-用户名.vercel.app`
+- **VPS 部署**：可使用您自己的域名，例如：`https://your-domain.com`
+
+使用方法：
+- **反代网站**：直接访问您的域名即可访问被代理的源站内容
+- **反代大模型 API**：在您的客户端中，将 API 地址设置为：
+  - OpenAI：`https://您的域名/v1/chat/completions`
+  - Claude：`https://您的域名/v1/messages`
+  - Grok：`https://您的域名/v1/chat/completions`
+
+## 注意事项
+
+- Vercel 免费计划有一定的带宽和函数执行时间限制
+- 不要将此服务用于违法用途
+- 如代理 Grok API，请确保您拥有合法的 API 使用权
+- 部分网站可能有反代理机制，效果可能不理想
+
+## 常见问题
+
+**Q: 部署后访问显示错误或白屏？**  
+A: 检查环境变量是否设置正确，确保 TARGET_URL 没有多余的空格和斜杠。
+
+**Q: 大模型 API 响应很慢或超时？**  
+A: 这可能是网络问题或 Vercel 节点限制，可尝试不同时间重试或使用VPS部署。
+
+**Q: 可以同时反代多个不同的 API 吗？**  
+A: 单个部署只能反代一个目标地址。如需反代多个服务，请创建多个项目部署。
+
+**Q: WordPress 登录后跳转有问题？**  
+A: 本项目已优化常见的 WordPress 登录问题，如仍有异常，可尝试使用源站管理。
+
+**Q: VPS 部署后无法通过域名访问？**  
+A: 请检查域名DNS是否正确指向您的VPS IP，以及Nginx配置和防火墙设置是否正确。
