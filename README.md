@@ -38,7 +38,7 @@ npm run dev
 
 ## 使用示例
 
-### WordPress博客访问
+### 默认网站访问
 
 直接通过您的Vercel部署URL访问，例如：`https://your-vercel-app.vercel.app/`
 

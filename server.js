@@ -137,124 +137,157 @@ function modifyResponseBody(proxyRes, req, res) {
   });
 }
 
-// 创建支持流式传输的AI API代理配置
-function createStreamingAIProxy(targetUrl) {
-  return createProxyMiddleware({
-    target: targetUrl,
-    changeOrigin: true,
-    selfHandleResponse: false, // 关键设置：不自己处理响应，让代理自动流式传输
-    pathRewrite: (path, req) => {
-      // 从路径中移除前缀，例如将 /grok/v1/chat/completions 转为 /v1/chat/completions
-      if (path.startsWith('/grok/')) {
-        // 针对X.ai API的特殊处理，判断目标URL是否已包含/v1
-        if (targetUrl.endsWith('/v1')) {
-          // 如果目标URL已经包含/v1，则直接去掉/grok
-          return path.replace('/grok', '');
-        } else {
-          // 如果目标URL不包含/v1，则去掉/grok/v1并添加/v1
-          return '/v1' + path.replace('/grok/v1', '');
-        }
-      } else if (path.startsWith('/claude/')) {
-        return path.replace('/claude', '');
-      } else if (path.startsWith('/openai/')) {
-        return path.replace('/openai', '');
-      }
-      return path;
-    },
-    onProxyReq: (proxyReq, req, res) => {
-      // 确保流式请求的正确处理
-      if (req.body && req.body.stream === true) {
-        // 确保客户端请求中的stream参数为true
-        const modifiedBody = { ...req.body, stream: true };
-        const bodyData = JSON.stringify(modifiedBody);
-        
-        // 更新内容长度
-        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-        
-        // 写入请求体
-        proxyReq.write(bodyData);
-        proxyReq.end();
-      } else if (req.body) {
-        // 对于非流式请求，正常处理
-        const bodyData = JSON.stringify(req.body);
-        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-        proxyReq.write(bodyData);
-      }
-    },
-    onProxyRes: (proxyRes, req, res) => {
-      // 处理流式响应的特殊头
-      const contentType = proxyRes.headers['content-type'] || '';
-      
-      // 确保CORS头和流式传输所需的头
-      proxyRes.headers['Access-Control-Allow-Origin'] = '*';
-      proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
-      proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key, anthropic-version';
-      
-      // 针对SSE (Server-Sent Events)流式响应的特殊处理
-      if (contentType.includes('text/event-stream')) {
-        // 确保不会缓存SSE响应
-        proxyRes.headers['Cache-Control'] = 'no-cache';
-        proxyRes.headers['Connection'] = 'keep-alive';
-        
-        // 保留transfer-encoding: chunked，确保流式传输
-        if (!proxyRes.headers['transfer-encoding']) {
-          proxyRes.headers['transfer-encoding'] = 'chunked';
-        }
-      } else {
-        // 对于非流式响应，正常处理
-        if (proxyRes.headers['content-length']) {
-          // 保留内容长度
-        }
-      }
-    },
-    // 增强的错误处理
-    onError: (err, req, res) => {
-      console.error('代理错误:', err);
-      
-      // 检查是否是流式请求
-      const isStreamRequest = req.body && req.body.stream === true;
-      
-      if (isStreamRequest && !res.headersSent) {
-        // 对于流式请求的错误，以SSE格式返回错误
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.write(`data: ${JSON.stringify({ error: '代理服务器错误', message: err.message })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
-      } else if (!res.headersSent) {
-        // 对于非流式请求或已发送头的情况，以JSON格式返回错误
-        res.writeHead(500, {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        });
-        res.end(JSON.stringify({ error: '代理服务器错误', message: err.message }));
-      }
-    }
-  });
-}
-
-// Grok API 流式代理路由
-app.use('/grok/v1/chat/completions', createStreamingAIProxy(grokTargetUrl));
-
-// Claude API 流式代理路由
-app.use('/claude/v1/messages', createStreamingAIProxy(claudeTargetUrl));
-
-// OpenAI API 流式代理路由
-app.use('/openai/v1/completions', createStreamingAIProxy(openaiTargetUrl));
-app.use('/openai/v1/chat/completions', createStreamingAIProxy(openaiTargetUrl));
-
-// 预处理OPTIONS请求，支持CORS
+// 预处理OPTIONS请求，支持CORS (需放在最前面处理)
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version');
     return res.status(200).end();
   }
   next();
 });
+
+// 这是关键修改，将API路由放在前面，确保它们有更高的优先级
+// Grok API 流式代理路由 - 修改为明确的路径匹配
+app.use('/grok', createProxyMiddleware({
+  target: grokTargetUrl,
+  changeOrigin: true,
+  selfHandleResponse: false,
+  pathRewrite: (path, req) => {
+    // 简化路径处理，更直观明确
+    // 从/grok开头的路径改为/v1开头(如果目标URL不含/v1)或直接移除/grok(如果目标URL已包含/v1)
+    if (grokTargetUrl.endsWith('/v1')) {
+      return path.replace('/grok', '');
+    } else {
+      return '/v1' + path.replace('/grok', '');
+    }
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    // 确保流式请求的正确处理
+    if (req.body && req.body.stream === true) {
+      // 确保客户端请求中的stream参数为true
+      const modifiedBody = { ...req.body, stream: true };
+      const bodyData = JSON.stringify(modifiedBody);
+      
+      // 更新内容长度
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      
+      // 写入请求体
+      proxyReq.write(bodyData);
+      proxyReq.end();
+    } else if (req.body) {
+      // 对于非流式请求，正常处理
+      const bodyData = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    // 处理流式响应的特殊头
+    const contentType = proxyRes.headers['content-type'] || '';
+    
+    // 确保CORS头和流式传输所需的头
+    proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+    proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key, anthropic-version';
+    
+    // 针对SSE (Server-Sent Events)流式响应的特殊处理
+    if (contentType.includes('text/event-stream')) {
+      // 确保不会缓存SSE响应
+      proxyRes.headers['Cache-Control'] = 'no-cache';
+      proxyRes.headers['Connection'] = 'keep-alive';
+      
+      // 保留transfer-encoding: chunked，确保流式传输
+      if (!proxyRes.headers['transfer-encoding']) {
+        proxyRes.headers['transfer-encoding'] = 'chunked';
+      }
+    }
+  },
+  // 增强的错误处理
+  onError: (err, req, res) => {
+    console.error('代理错误:', err);
+    
+    // 检查是否是流式请求
+    const isStreamRequest = req.body && req.body.stream === true;
+    
+    if (isStreamRequest && !res.headersSent) {
+      // 对于流式请求的错误，以SSE格式返回错误
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.write(`data: ${JSON.stringify({ error: '代理服务器错误', message: err.message })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else if (!res.headersSent) {
+      // 对于非流式请求或已发送头的情况，以JSON格式返回错误
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(JSON.stringify({ error: '代理服务器错误', message: err.message }));
+    }
+  }
+}));
+
+// Claude API 流式代理路由 - 移到这里，保持其他API路由的一致性
+app.use('/claude', createProxyMiddleware({
+  target: claudeTargetUrl,
+  changeOrigin: true,
+  selfHandleResponse: false,
+  pathRewrite: (path, req) => {
+    return path.replace('/claude', '');
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    if (req.body) {
+      const bodyData = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+    proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key, anthropic-version';
+  },
+  onError: (err, req, res) => {
+    console.error('Claude代理错误:', err);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '代理服务器错误', message: err.message }));
+    }
+  }
+}));
+
+// OpenAI API 流式代理路由
+app.use('/openai', createProxyMiddleware({
+  target: openaiTargetUrl,
+  changeOrigin: true,
+  selfHandleResponse: false,
+  pathRewrite: (path, req) => {
+    return path.replace('/openai', '');
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    if (req.body) {
+      const bodyData = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+    proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+  },
+  onError: (err, req, res) => {
+    console.error('OpenAI代理错误:', err);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '代理服务器错误', message: err.message }));
+    }
+  }
+}));
 
 // WordPress特定逻辑的路由处理（仅当目标是WordPress网站时有效）
 app.use('/wp-login.php', createProxyMiddleware({
@@ -309,7 +342,7 @@ app.use('/wp-login.php', createProxyMiddleware({
   }
 }));
 
-// 通用网站代理
+// 通用网站代理 - 这个路由必须放在最后，作为后备处理器
 app.use('/', createProxyMiddleware({
   target: targetUrl,
   changeOrigin: true,
