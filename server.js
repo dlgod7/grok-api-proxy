@@ -22,47 +22,32 @@ app.use((req, res, next) => {
   next();
 });
 
-// 创建Grok API代理
+// 创建Grok API代理，简化配置以减少超时风险
 const grokProxy = createProxyMiddleware({
   target: grokTargetUrl,
   changeOrigin: true,
-  pathRewrite: (pathReq, req) => {
-    // 确保路径以/v1开头
+  followRedirects: true, // 自动跟随重定向
+  pathRewrite: (pathReq) => {
     return pathReq.startsWith('/v1') ? pathReq : `/v1${pathReq}`;
   },
   onProxyReq: (proxyReq, req) => {
-    // 确保请求体中包含stream=true
-    if (req.body && req.method === 'POST') {
-      if (req.body.stream === undefined) {
-        req.body.stream = true;
-        
-        // 如果请求体已被解析，需要重新写入
-        const bodyData = JSON.stringify(req.body);
-        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-        proxyReq.write(bodyData);
-      }
+    // 只对POST请求进行处理
+    if (req.body && req.method === 'POST' && req.body.stream === undefined) {
+      // 添加stream参数
+      req.body.stream = true;
+      
+      // 重写请求体
+      const bodyData = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
     }
   },
-  onProxyRes: (proxyRes, req, res) => {
-    // 处理流式响应，设置适当的头部
-    if (req.body && req.body.stream === true) {
-      proxyRes.headers['Cache-Control'] = 'no-cache';
-      proxyRes.headers['Connection'] = 'keep-alive';
-      proxyRes.headers['Content-Type'] = 'text/event-stream';
-    }
-  },
-  onError: (err, req, res) => {
-    console.error('代理错误:', err);
-    if (!res.headersSent) {
-      res.status(500).send({
-        error: {
-          message: `代理请求失败: ${err.message}`,
-          type: 'proxy_error'
-        }
-      });
-    }
-  },
-  selfHandleResponse: false // 让响应直接流式传输
+  selfHandleResponse: false, // 不缓冲响应，直接流式传输
+  proxyTimeout: 60000, // 增加代理超时时间到60秒
+  timeout: 60000, // 增加socket超时时间到60秒
+  buffer: {
+    pipe: false // 确保数据不被完全缓冲
+  }
 });
 
 // 将所有请求代理到Grok API
