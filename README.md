@@ -60,6 +60,16 @@
 
 如果您有自己的VPS或云主机，也可以在上面部署本项目，这样可以拥有更大的控制权和稳定性。下面提供两种常见Linux系统的详细部署步骤。
 
+> **为什么需要Nginx？** 虽然Node.js应用可以直接运行，但使用Nginx作为前置代理有以下优势：
+> - **安全性增强**：Nginx可以隐藏Node.js应用的具体细节，减少直接暴露的风险
+> - **SSL/HTTPS支持**：更容易配置SSL证书，提供加密连接
+> - **负载均衡**：如果将来需要扩展，可以轻松配置多个后端
+> - **静态资源处理**：更高效地处理静态文件
+> - **缓存**：可以配置缓存提高性能
+> - **防DDoS**：提供一定的防护能力
+>
+> 如果您不想使用Nginx，也可以仅完成步骤1-4，然后使用防火墙开放3000端口，直接访问`http://您的IP:3000`，但不推荐在生产环境中这样做。
+
 #### Ubuntu/Debian 系统部署步骤
 
 1. **准备工作：更新系统并安装基础软件**
@@ -273,7 +283,13 @@
 - **反代大模型 API**：在您的客户端中，将 API 地址设置为：
   - OpenAI：`https://您的域名/v1/chat/completions`
   - Claude：`https://您的域名/v1/messages`
-  - Grok：`https://您的域名/v1/chat/completions`
+  - Grok API（与OpenAI兼容）：
+    - 聊天接口：`https://您的域名/v1/chat/completions`
+    - 文本补全：`https://您的域名/v1/completions`
+    - 嵌入向量：`https://您的域名/v1/embeddings`
+    - 模型列表：`https://您的域名/v1/models`
+  
+  在接入OpenWebUI等开源客户端时，可以选择"OpenAI"类型，并将API基础URL设置为`https://您的域名`
 
 ## 注意事项
 
@@ -281,6 +297,7 @@
 - 不要将此服务用于违法用途
 - 如代理 Grok API，请确保您拥有合法的 API 使用权
 - 部分网站可能有反代理机制，效果可能不理想
+- **使用Grok API需注意**：Grok API与OpenAI API兼容，但有自己的模型名称和特点，使用时请参考[Grok官方API文档](https://docs.x.ai/)设置正确的模型名称（如`grok-2`）
 
 ## 常见问题
 
